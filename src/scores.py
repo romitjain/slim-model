@@ -93,4 +93,4 @@ def compute_composite_score(
         candidates[layer] = entropy_weight * normalized_entropies[layer][0]# + (1-kl_weight) * normalized_kl[layer][0]
 
     # Currently outputs layer number for self attn
-    return [(k.split("_")[1], v) for k, v in sorted(candidates.items(), key=lambda x: x[1], reverse=True)][:top_k]
+    return [int(k.split("_")[1]) for k, v in sorted(candidates.items(), key=lambda x: x[1], reverse=True)][:top_k]

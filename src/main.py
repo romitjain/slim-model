@@ -266,10 +266,9 @@ def main():
 
     print_metrics()
 
-    composite_scores = compute_composite_score(attention_entropies, attention_kl, top_k=args.top_k)
+    layers_to_prune = compute_composite_score(attention_entropies, attention_kl, top_k=args.top_k)
 
-    logger.info(f"Composite scores: {composite_scores}")
-
+    logger.info(f"Layers to prune: {layers_to_prune}")
 
     suffix = datetime.now().strftime('%Y%m%d_%H%M%S')
     logger.info("Pruning the model and exporting the pruned model")
@@ -279,7 +278,7 @@ def main():
     model_state_dict = model.state_dict()
 
     for layer, val in model_state_dict.items():
-        if "self_attn" in layer and layer.split(".")[2] in composite_scores:
+        if "self_attn" in layer and layer.split(".")[2] in layers_to_prune:
             model_state_dict[layer].copy_(torch.ones_like(model_state_dict[layer]) * float('nan'))
             logger.info(f"NaN'd layer {layer}")
 
@@ -290,7 +289,7 @@ def main():
         json.dump({
             "attention_entropies": attention_entropies,
             "attention_kl": attention_kl,
-            "composite_scores": composite_scores
+            "layers_to_prune": layers_to_prune
         }, f)
 
 if __name__ == "__main__":
