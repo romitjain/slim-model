@@ -41,7 +41,7 @@ def prepare_dataset(dataset_name: str, config: str, split: str, tokenizer: AutoT
     return dataset
 
 
-def prepare_train_dataset(dataset_name: str, config: str, split: str) -> Dataset:
+def prepare_train_dataset(dataset_name: str, config: str, split: str, tokenizer: AutoTokenizer) -> Dataset:
     dataset = load_dataset(dataset_name, config)[split]
 
     def prep_toks(x):
@@ -60,10 +60,10 @@ def prepare_train_dataset(dataset_name: str, config: str, split: str) -> Dataset
             }
         ]
         return {
-            "messages": msg
+            "text": tokenizer.apply_chat_template(msg, tokenize=False)
         }
 
-    dataset = dataset.map(prep_toks)
-    assert "messages" in dataset.column_names
+    dataset = dataset.map(prep_toks).select_columns(["text"])
+    assert "text" in dataset.column_names
 
     return dataset
