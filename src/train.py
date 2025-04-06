@@ -1,6 +1,7 @@
 # Load the pruned model and infer
 
 import pdb
+import json
 import torch
 
 from transformers import AutoTokenizer
@@ -14,14 +15,14 @@ config = {
     "per_device_eval_batch_size": 2,
     "eval_accumulation_steps": 4,
     "learning_rate": 5e-5,
-    "num_epochs": 1,
+    "num_epochs": 2,
     "gradient_accumulation_steps": 1,
     "gradient_checkpointing": True,
     "warmup_ratio": 0.1,
     "weight_decay": 0.01,
     "logging_steps": 10,
     "eval_strategy": "steps",
-    "eval_steps": 100,
+    "eval_steps": 1000,
     "torch_empty_cache_steps": 100,
 }
 
@@ -34,19 +35,19 @@ def train(model, train_dataset, eval_dataset, tokenizer):
         packing=False,
         do_train=True,
         do_eval=False,
-        eval_strategy=config["eval_strategy"],
-        eval_steps=config["eval_steps"],
-        num_train_epochs=config["num_epochs"],
+        # eval_strategy=config["eval_strategy"],
+        # eval_steps=config["eval_steps"],
+        # num_train_epochs=config["num_epochs"],
         per_device_train_batch_size=config["batch_size"],
-        per_device_eval_batch_size=config["per_device_eval_batch_size"],
-        eval_accumulation_steps=config["eval_accumulation_steps"],
+        # per_device_eval_batch_size=config["per_device_eval_batch_size"],
+        # eval_accumulation_steps=config["eval_accumulation_steps"],
         gradient_accumulation_steps=config["gradient_accumulation_steps"],
         gradient_checkpointing=config["gradient_checkpointing"],
         learning_rate=config["learning_rate"],
         logging_steps=config["logging_steps"],
         warmup_ratio=config["warmup_ratio"],
-        metric_for_best_model="eval_loss",
-        load_best_model_at_end=True,
+        metric_for_best_model="train_loss",
+        # load_best_model_at_end=True,
         torch_empty_cache_steps=config["torch_empty_cache_steps"],
     )
 
@@ -71,21 +72,14 @@ if __name__ == "__main__":
     from argparse import ArgumentParser
     parser = ArgumentParser()
     parser.add_argument("--model_path", type=str, default="Qwen/Qwen2.5-0.5B-Instruct")
-    parser.add_argument("--pruned_state_dict", type=str, required=True)
+    parser.add_argument("--pruned_metrics", type=str, required=True)
     parser.add_argument("--dataset", type=str, default="lighteval/summarization")
     parser.add_argument("--config", type=str, default="cnn-dm")
 
     args = parser.parse_args()
     tokenizer = AutoTokenizer.from_pretrained(args.model_path)
-    pruned_state_dict = torch.load(args.pruned_state_dict)
-
-    # Figure out the pruned layers
-    pruned_layers = [1, 22, 2]
-    # for key, value in pruned_state_dict.items():
-    #     if torch.isnan(value).any():
-    #         pruned_layers.append(int(key.split(".")[1]))
-
-    # pdb.set_trace()
+    pruned_layers = json.load(open(args.pruned_metrics))["layers_to_prune"]
+    print(f"Pruned layers: {pruned_layers}")
 
     pruned_model = PrunedQwen2ForCausalLM.from_pretrained(
         args.model_path,
@@ -94,6 +88,9 @@ if __name__ == "__main__":
         pruned_layers=pruned_layers,
         use_cache=False,
     ).to("cuda")
+
+    param_count = sum(p.numel() for p in pruned_model.parameters()) * 2
+    print(f"Pruned model size: {param_count / 1e9} GB")
 
     train_dataset = prepare_train_dataset(args.dataset, args.config, split="train", tokenizer=tokenizer)
     eval_dataset = prepare_train_dataset(args.dataset, args.config, split="validation", tokenizer=tokenizer)

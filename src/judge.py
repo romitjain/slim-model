@@ -117,8 +117,8 @@ def evaluate_models(args):
         pruned_layers=pruned_layers
     ).to("cuda")
 
-    original_model_size = round(original_model.num_parameters() * 2 / 1024**3, 2)
-    pruned_model_size = round(pruned_model.num_parameters() * 2 / 1024**3, 2)
+    original_model_size = round(sum(p.numel() for p in original_model.parameters()) * 2 / 1e9, 2)
+    pruned_model_size = round(sum(p.numel() for p in pruned_model.parameters()) * 2 / 1e9, 2)
 
     print(f"Oringal model size: {original_model_size} GB")
     print(f"Pruned model size: {pruned_model_size} GB")
