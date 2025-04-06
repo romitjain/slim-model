@@ -4,3 +4,4 @@ rich>=13.0.0
 tqdm==4.66.4
 transformers==4.46.2
 matplotlib==3.10.1
+trl==0.16.1

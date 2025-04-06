@@ -2,13 +2,13 @@
 
 import pdb
 import torch
-from torch.utils.data import Dataset, DataLoader
 from typing import List, Optional, Tuple
 
-from datasets import load_dataset
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, TrainingArguments
 from transformers.models.qwen2.modeling_qwen2 import Qwen2DecoderLayer, Qwen2Config, Qwen2Model, Qwen2ForCausalLM
+from trl import SFTTrainer
 
+from .utils import prepare_train_dataset
 
 class PrunedQwen2DecoderLayer(Qwen2DecoderLayer):
     def __init__(self, config: Qwen2Config, layer_idx: int):
@@ -46,27 +46,41 @@ class PrunedQwen2ForCausalLM(Qwen2ForCausalLM):
         self.model = PrunedQwen2Model(config, pruned_layers)
 
 
-def train(model, dataset):
-    pass
+def train(model, train_dataset, eval_dataset, tokenizer):
+    training_args = TrainingArguments(
+        output_dir="./results",
+        do_train=True,
+        do_eval=True,
+        eval_strategy="steps",
+        eval_steps=100,
+        num_train_epochs=2,
+        per_device_train_batch_size=16,
+        per_device_eval_batch_size=32,
+        gradient_accumulation_steps=1,
+        gradient_checkpointing=True,
+        learning_rate=5e-5,
+        logging_steps=10,
+        warmup_ratio=0.1,
+        metric_for_best_model="eval_loss",
+        load_best_model_at_end=True,
+    )
 
-def eval(model, dataset):
-    pass
+    trainer = SFTTrainer(
+        model=model,
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
+        args=training_args,
+        processing_class=tokenizer,
+    )
 
-class SimpleDataLoader(Dataset):
-    def __init__(self, dataset, tokenizer, batch_size):
-        self.dataset = dataset
-        self.batch_size = batch_size
-        self.tokenizer = tokenizer
+    train_results = trainer.train()
+    eval_results = trainer.evaluate()
+    
+    print("\nFinal Evaluation Results:")
+    print(f"Loss: {eval_results['eval_loss']:.4f}")
+    
+    return trainer
 
-        self.tokens = []
-        for item in self.dataset.select_columns("tokens"):
-            self.tokens.append(self.tokenizer(item["tokens"], return_tensors="pt", padding=True, truncation=True), padding_side="left")
-
-    def __len__(self):
-        return len(self.dataset)
-
-    def __getitem__(self, idx):
-        return self.tokens[idx]
 
 if __name__ == "__main__":
     from argparse import ArgumentParser
@@ -90,17 +104,15 @@ if __name__ == "__main__":
 
     pruned_model = PrunedQwen2ForCausalLM.from_pretrained(
         args.model_path,
-        pruned_layers=pruned_layers
-    )
+        pruned_layers=pruned_layers,
+        attn_implementation="flash_attention_2",
+        torch_dtype=torch.bfloat16
+    ).to("cuda")
 
-    train_dataset = load_dataset(args.dataset, args.config, split="train")
-    eval_dataset = load_dataset(args.dataset, args.config, split="validation")
+    train_dataset = prepare_train_dataset(args.dataset, args.config, split="train")
+    eval_dataset = prepare_train_dataset(args.dataset, args.config, split="validation")
 
-    train_dataloader = SimpleDataLoader(train_dataset, tokenizer, 16)
-    eval_dataloader = SimpleDataLoader(eval_dataset, tokenizer, 16)
-
-    train(pruned_model, train_dataloader)
-    eval(pruned_model, eval_dataloader)
+    train(pruned_model, train_dataset, eval_dataset, tokenizer)
 
     # Save the model
     suffix = args.pruned_state_dict.split("/")[-1].split("_")[-1].split(".")[0]

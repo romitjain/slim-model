@@ -39,3 +39,31 @@ def prepare_dataset(dataset_name: str, config: str, split: str, tokenizer: AutoT
     dataset = dataset.select(range(128)).map(prep_toks)
     assert "tokens" in dataset.column_names
     return dataset
+
+
+def prepare_train_dataset(dataset_name: str, config: str, split: str) -> Dataset:
+    dataset = load_dataset(dataset_name, config)[split]
+
+    def prep_toks(x):
+        msg = [
+            {
+                "role": "system",
+                "content": "You are an helpful AI assistant whose job is to provide a concise summarize of the given content"
+            },
+            {
+                "role": "user",
+                "content": x["article"]
+            },
+            {
+                "role": "assistant",
+                "content": x["summary"]
+            }
+        ]
+        return {
+            "messages": msg
+        }
+
+    dataset = dataset.map(prep_toks)
+    assert "messages" in dataset.column_names
+
+    return dataset
