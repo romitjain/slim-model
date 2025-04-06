@@ -12,10 +12,10 @@ from .modeling import PrunedQwen2ForCausalLM
 
 config = {
     "batch_size": 4,
-    "per_device_eval_batch_size": 2,
-    "eval_accumulation_steps": 4,
+    "per_device_eval_batch_size": 1,
+    "eval_accumulation_steps": 8,
     "learning_rate": 5e-5,
-    "num_epochs": 2,
+    "num_epochs": 1,
     "gradient_accumulation_steps": 1,
     "gradient_checkpointing": True,
     "warmup_ratio": 0.1,
@@ -39,8 +39,8 @@ def train(model, train_dataset, eval_dataset, tokenizer):
         # eval_steps=config["eval_steps"],
         # num_train_epochs=config["num_epochs"],
         per_device_train_batch_size=config["batch_size"],
-        # per_device_eval_batch_size=config["per_device_eval_batch_size"],
-        # eval_accumulation_steps=config["eval_accumulation_steps"],
+        per_device_eval_batch_size=config["per_device_eval_batch_size"],
+        eval_accumulation_steps=config["eval_accumulation_steps"],
         gradient_accumulation_steps=config["gradient_accumulation_steps"],
         gradient_checkpointing=config["gradient_checkpointing"],
         learning_rate=config["learning_rate"],
@@ -92,7 +92,7 @@ if __name__ == "__main__":
     param_count = sum(p.numel() for p in pruned_model.parameters()) * 2
     print(f"Pruned model size: {param_count / 1e9} GB")
 
-    train_dataset = prepare_train_dataset(args.dataset, args.config, split="train", tokenizer=tokenizer)
+    train_dataset = prepare_train_dataset(args.dataset, args.config, split="train", tokenizer=tokenizer).select(range(2048))
     eval_dataset = prepare_train_dataset(args.dataset, args.config, split="validation", tokenizer=tokenizer)
     eval_dataset = eval_dataset.shuffle().select(range(512))
 
@@ -116,10 +116,6 @@ if __name__ == "__main__":
 
     train(pruned_model, train_dataset, eval_dataset, tokenizer)
 
-    # Save the model
-    suffix = args.pruned_state_dict.split("/")[-1].split("_")[-1].split(".")[0]
-    pruned_model.save_pretrained(f"models/pruned_model_state_dict_{suffix}.safetensors")
-
     with torch.no_grad():
         print("Sample forward pass after training...")
         msg = [
@@ -137,3 +133,7 @@ if __name__ == "__main__":
         outputs = pruned_model.generate(**inputs, max_new_tokens=16, use_cache=False)
 
         print(tokenizer.decode(outputs[0], skip_special_tokens=True))
+
+    # Save the model
+    suffix = args.pruned_metrics.split("/")[-1].split("_")[-1].split(".")[0]
+    pruned_model.save_pretrained(f"models/pruned_model_state_dict_{suffix}.safetensors")

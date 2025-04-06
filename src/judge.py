@@ -16,8 +16,8 @@ console = Console()
 def parse_args():
     parser = argparse.ArgumentParser(description="Compare two models using an LLM judge")
     parser.add_argument("--original_model", type=str, default="Qwen/Qwen2.5-0.5B-Instruct", help="Path to the original model")
-    parser.add_argument("--pruned_model", type=str, default="./models/model_state_dict_20250406_025700.pth", help="Path to the pruned model")
-    # parser.add_argument("--pruned_state_dict", type=str, default="./models/pruned_model_state_dict_20250406_025700.safetensors", help="Path to the pruned model state dict")
+    parser.add_argument("--pruned_model", type=str, default="./models/pruned_model_state_dict_115217.safetensors", help="Path to the pruned model")
+    parser.add_argument("--pruned_metrics", type=str, default="./models/pruned_metrics_20250406_025700.json", help="Path to the pruned metrics")
     parser.add_argument("--dataset_name", type=str, default="lighteval/summarization", help="Dataset name")
     parser.add_argument("--dataset_config", type=str, default="cnn-dm", help="Dataset configuration")
     parser.add_argument("--dataset_split", type=str, default="test", help="Dataset split")
@@ -34,7 +34,9 @@ def generate_response(model, tokenizer, prompt, max_length=1024):
     with torch.no_grad():
         outputs = model.generate(
             **inputs,
-            max_length=max_length
+            max_length=max_length,
+            do_sample=True,
+            temperature=0.7
         )
 
     response = tokenizer.decode(outputs[0], skip_special_tokens=True)
@@ -106,11 +108,12 @@ def evaluate_models(args):
 
     console.print("[bold green]Loading models...[/bold green]")
 
-    pruned_layers = [1, 22, 2]
+    pruned_layers = json.load(open(args.pruned_metrics))["layers_to_prune"]
+    print(f"Pruned layers: {pruned_layers}")
 
     original_tokenizer, original_model = load_model(args.original_model)
     pruned_model = PrunedQwen2ForCausalLM.from_pretrained(
-        "/home/romit/projects/slim-model/models/pruned_model_state_dict_025700.safetensors",
+        args.pruned_model,
         torch_dtype=torch.bfloat16,
         attn_implementation="flash_attention_2",
         use_cache=False,
