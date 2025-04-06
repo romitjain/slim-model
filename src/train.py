@@ -11,8 +11,10 @@ from .modeling import PrunedQwen2ForCausalLM
 
 config = {
     "batch_size": 4,
+    "per_device_eval_batch_size": 2,
+    "eval_accumulation_steps": 4,
     "learning_rate": 5e-5,
-    "num_epochs": 2,
+    "num_epochs": 1,
     "gradient_accumulation_steps": 1,
     "gradient_checkpointing": True,
     "warmup_ratio": 0.1,
@@ -20,6 +22,7 @@ config = {
     "logging_steps": 10,
     "eval_strategy": "steps",
     "eval_steps": 100,
+    "torch_empty_cache_steps": 100,
 }
 
 def train(model, train_dataset, eval_dataset, tokenizer):
@@ -30,12 +33,13 @@ def train(model, train_dataset, eval_dataset, tokenizer):
         output_dir="./results",
         packing=False,
         do_train=True,
-        do_eval=True,
+        do_eval=False,
         eval_strategy=config["eval_strategy"],
         eval_steps=config["eval_steps"],
         num_train_epochs=config["num_epochs"],
         per_device_train_batch_size=config["batch_size"],
-        per_device_eval_batch_size=config["batch_size"],
+        per_device_eval_batch_size=config["per_device_eval_batch_size"],
+        eval_accumulation_steps=config["eval_accumulation_steps"],
         gradient_accumulation_steps=config["gradient_accumulation_steps"],
         gradient_checkpointing=config["gradient_checkpointing"],
         learning_rate=config["learning_rate"],
@@ -43,6 +47,7 @@ def train(model, train_dataset, eval_dataset, tokenizer):
         warmup_ratio=config["warmup_ratio"],
         metric_for_best_model="eval_loss",
         load_best_model_at_end=True,
+        torch_empty_cache_steps=config["torch_empty_cache_steps"],
     )
 
     trainer = SFTTrainer(
@@ -87,10 +92,12 @@ if __name__ == "__main__":
         attn_implementation="flash_attention_2",
         torch_dtype=torch.bfloat16,
         pruned_layers=pruned_layers,
+        use_cache=False,
     ).to("cuda")
 
     train_dataset = prepare_train_dataset(args.dataset, args.config, split="train", tokenizer=tokenizer)
     eval_dataset = prepare_train_dataset(args.dataset, args.config, split="validation", tokenizer=tokenizer)
+    eval_dataset = eval_dataset.shuffle().select(range(512))
 
     with torch.no_grad():
         print("Sample forward pass...")
@@ -115,3 +122,21 @@ if __name__ == "__main__":
     # Save the model
     suffix = args.pruned_state_dict.split("/")[-1].split("_")[-1].split(".")[0]
     pruned_model.save_pretrained(f"models/pruned_model_state_dict_{suffix}.safetensors")
+
+    with torch.no_grad():
+        print("Sample forward pass after training...")
+        msg = [
+            {
+                "role": "system",
+                "content": "You are an helpful AI assistant whose job is to provide a concise summarize of the given content"
+            },
+            {
+                "role": "user",
+                "content": "Hello, how are you?"
+            }
+        ]
+        inputs = tokenizer.apply_chat_template(msg, tokenize=False)
+        inputs = tokenizer(inputs, return_tensors="pt").to("cuda")
+        outputs = pruned_model.generate(**inputs, max_new_tokens=16, use_cache=False)
+
+        print(tokenizer.decode(outputs[0], skip_special_tokens=True))

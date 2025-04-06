@@ -33,3 +33,23 @@ In future, I plan to expand this to:
 3. Automated NaS
 4. KD based recovery
 5. Support for more models
+
+## Model Comparison with LLM Judge
+
+The `judge.py` script allows you to compare two language models using an LLM as a judge. It runs a dataset through both models, stores the detokenized outputs, and then uses an LLM API endpoint to determine which model performed better.
+
+### Usage
+
+```bash
+python src/judge.py \
+  --original_model <hf_ckpt> \
+  --pruned_model /path/to/pruned_model \
+  --dataset_name cnn_dailymail \
+  --dataset_config 3.0.0 \
+  --dataset_split test \
+  --num_samples 100 \
+  --output_file results/model_comparison.json \
+  --llm_api_endpoint https://api.openai.com/v1/chat/completions
+```
+
+The results are also displayed in the terminal in a formatted table.
